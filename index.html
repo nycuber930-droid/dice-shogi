@@ -22,7 +22,7 @@ html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{
   margin:0;background:var(--bg);color:var(--fg);
   font-family:"Hiragino Sans","Yu Gothic",sans-serif;
-  padding:12px;overflow-x:auto
+  padding:12px;overflow-x:hidden
 }
 h1{font-size:20px;margin:0 0 12px}
 .levelbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
@@ -30,13 +30,16 @@ h1{font-size:20px;margin:0 0 12px}
 #levelSelect{display:inline-block;visibility:visible;opacity:1;min-width:150px;min-height:42px;padding:8px 34px 8px 10px;font-size:16px;color:var(--fg);background:var(--panel);border:2px solid var(--line);border-radius:6px}
 .wrap{
   display:flex;gap:24px;flex-wrap:wrap;
-  align-items:flex-start
+  align-items:flex-start;justify-content:center;
+  width:fit-content;max-width:100%;margin:0 auto
 }
 #game{overflow:visible;padding:12px 4px 24px}
 #board{
   position:relative;
   display:grid;
   grid-template-columns:repeat(8,min(11vw,54px));
+  grid-template-rows:repeat(8,min(11vw,54px));
+  width:max-content;
   border:3px solid var(--line);
   transform:perspective(1000px) rotateX(27deg);
   transform-origin:center center;
@@ -52,6 +55,7 @@ h1{font-size:20px;margin:0 0 12px}
 .c.start{background:#e0675a}
 .c.goal{background:#f7d63c}
 .c.opt{cursor:pointer}
+#board{touch-action:none;user-select:none;-webkit-user-select:none}
 .c.opt::after{
   content:"";position:absolute;inset:14%;
   border:4px solid #1f9d55;border-radius:50%
@@ -93,7 +97,7 @@ small{
 }
 @media(max-width:480px){
   .wrap{gap:16px}
-  #board{grid-template-columns:repeat(8,min(10.5vw,44px))}
+  #board{grid-template-columns:repeat(8,min(10.5vw,44px));grid-template-rows:repeat(8,min(10.5vw,44px))}
 }
 </style>
 </head>
@@ -583,19 +587,9 @@ function anim(from,to,ax,ang,cb){
   },35);
 }
 
-$('board').onclick=e=>{
-  const el=e.target.closest('.c');
-
-  if(!el||won||busy)return;
-
-  const m=opts.find(o=>
-    o.x==+el.dataset.c&&o.y==+el.dataset.y
-  );
-
-  if(!m)return;
-
+function moveTo(m){
+  if(!m||won||busy)return;
   opts=[];
-
   anim(S,m,m.ax,m.ang,()=>{
     S={x:m.x,y:m.y,R:m.R};
 
@@ -617,7 +611,49 @@ $('board').onclick=e=>{
 
     fin('');
   });
+}
+
+$('board').onclick=e=>{
+  const el=e.target.closest('.c');
+  if(!el)return;
+  const m=opts.find(o=>o.x===+el.dataset.c&&o.y===+el.dataset.y);
+  moveTo(m);
 };
+
+// PC: 矢印キーで隣接する合法マスへ移動
+addEventListener('keydown',e=>{
+  if(won||busy||e.altKey||e.ctrlKey||e.metaKey)return;
+  if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName))return;
+  const dirs={
+    ArrowUp:[0,1],ArrowDown:[0,-1],
+    ArrowLeft:[-1,0],ArrowRight:[1,0]
+  };
+  const d=dirs[e.key];
+  if(!d)return;
+  e.preventDefault();
+  moveTo(opts.find(o=>o.x===S.x+d[0]&&o.y===S.y+d[1]));
+});
+
+// スマホ: 盤面上のスワイプ方向で移動
+let swipeStart=null;
+$('board').addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='touch'||won||busy)return;
+  swipeStart={x:e.clientX,y:e.clientY};
+});
+$('board').addEventListener('pointerup',e=>{
+  if(!swipeStart||e.pointerType!=='touch')return;
+  const dx=e.clientX-swipeStart.x,dy=e.clientY-swipeStart.y;
+  swipeStart=null;
+  const threshold=22;
+  if(Math.max(Math.abs(dx),Math.abs(dy))<threshold)return;
+  const sx=Math.abs(dx)>=threshold?Math.sign(dx):0;
+  const sy=Math.abs(dy)>=threshold?-Math.sign(dy):0;
+  // 小さな斜め誤差は無視し、明確な斜めスワイプは斜め移動として扱う
+  const diagonal=Math.abs(dx)>=threshold&&Math.abs(dy)>=threshold;
+  const d=diagonal?[sx,sy]:(Math.abs(dx)>Math.abs(dy)?[sx,0]:[0,sy]);
+  moveTo(opts.find(o=>o.x===S.x+d[0]&&o.y===S.y+d[1]));
+});
+$('board').addEventListener('pointercancel',()=>{swipeStart=null;});
 
 function animateReturnToStart(message){
   const from={x:S.x,y:S.y,R:S.R};
